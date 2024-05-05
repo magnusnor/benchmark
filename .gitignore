@@ -1,4 +1,5 @@
 **/csv_files/*.csv
 **/csv_files/*.tgz
 
-**/results/tests
+**/results/
+**/workloads/**/queries/*.sql
