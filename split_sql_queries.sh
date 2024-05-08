@@ -16,7 +16,9 @@ BEGIN { query_num = 1 }
     if ($0 ~ /^[[:space:]]*$/) next
     query = $0
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", query)
-    printf "%s\n", query > output_dir "/" query_num ".sql"
+    output_file = output_dir "/" query_num ".sql"
+    print query > output_file
+    close(output_file)
     query_num++
 }
 ' "$sql_file"
