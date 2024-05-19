@@ -2,7 +2,7 @@
 set -e
 
 CURDIR=$(cd `dirname $0`; pwd)
-OUTDIR=$CURDIR/results/$1
+OUTDIR=$CURDIR/results/job
 
 if [ ! -e $OUTDIR ]; then
   mkdir -p $OUTDIR
@@ -10,8 +10,8 @@ fi
 
 cd $CURDIR
 
-mysql_client="/home/magnus/dev/priv/mysql-server/build-release/bin/mysql"
-mysql_sock="/home/magnus/dev/priv/mysql-server/build-release/mysql-test/var/tmp/mysqld.1.sock"
+mysql_client="/home/magnus/dev/priv/mysql-server/build/bin/mysql"
+mysql_sock="/home/magnus/dev/priv/mysql-server/build/mysql-test/var/tmp/mysqld.1.sock"
 
 export mysql_connect="$mysql_client -u root -S $mysql_sock -D imdbload -t"
 
@@ -52,16 +52,30 @@ eof"
 
 eval "$analyze"
 
-output_folder="${OUTDIR}/baseline/"
+output_folder_baseline="${OUTDIR}/baseline_plans/"
+output_folder_ml="${OUTDIR}/ml_plans/"
+output_folder_benchmark="${OUTDIR}/benchmark/"
 
-if [ ! -e $output_folder ]; then
-mkdir -p $output_folder
+if [ ! -e $output_folder_baseline ]; then
+mkdir -p $output_folder_baseline
 fi
 
-for file in `ls workloads/$1/queries/*.sql`; do
+if [ ! -e $output_folder_ml ]; then
+mkdir -p $output_folder_ml
+fi
+
+if [ ! -e $output_folder_benchmark ]; then
+mkdir -p $output_folder_benchmark
+fi
+
+for file in `ls datasets/job/queries/*.sql`; do
     base_name=`basename $file`
     name=${base_name%.*}
-    output_json=$output_folder/$name.json
+    output_markdown_benchmark=$output_folder_benchmark/$name.md
+    output_json_baseline=$output_folder_baseline/$name.json
+    output_json_ml=$output_folder_ml/$name.json
+    output_json_benchmark=$output_folder_benchmark/$name.json
+
     echo -e "${BIWhite}+-------------+${NC}"
     echo -e "${BIWhite}| Run $name.sql |${NC}"
     echo -e "${BIWhite}+-------------+${NC}"
@@ -69,14 +83,41 @@ for file in `ls workloads/$1/queries/*.sql`; do
     original_query=$(<$file)
     query=${original_query/";"/"\G"}
 
-    if [ -s "$output_json" ]
+    if [ -s "$output_json_baseline" ] && [ -s "$output_json_benchmark" ]
     then
       echo "Results for $name already collected, skipping..."
       continue
     fi
 
-    $mysql_connect -e "EXPLAIN ANALYZE format=json $query" | awk '
-    /^{/ {start = 1}
-    /^EXPLAIN: / {gsub(/^EXPLAIN: /, ""); start = 1}
-    start {print}' > "$output_json"
+    query_without_ml=${query}
+    query_with_ml=${query/"SELECT "/"SELECT /*+ ML_CARDINALITY_ESTIMATION(1) */ "}
+    query_compare_with_baseline=${query/"SELECT "/"SELECT /*+ ML_CARDINALITY_ESTIMATION(0) */ "}
+
+    if [ ! -s "$output_json_baseline" ]
+    then 
+      $mysql_connect -e "EXPLAIN ANALYZE format=json $query_compare_with_baseline" | awk '
+      /^{/ {start = 1}
+      /^EXPLAIN: / {gsub(/^EXPLAIN: /, ""); start = 1}
+      start {print}' > "$output_json_baseline"
+    else
+      echo "Comparison results on baseline plan for $name already collected, skipping..."
+    fi
+
+    if [ ! -s "$output_json_ml" ]
+    then 
+      $mysql_connect -e "EXPLAIN ANALYZE format=json $query_with_ml" | awk '
+      /^{/ {start = 1}
+      /^EXPLAIN: / {gsub(/^EXPLAIN: /, ""); start = 1}
+      start {print}' > "$output_json_ml"
+    else
+      echo "Comparison results on ML plan for $name already collected, skipping..."
+    fi
+
+    hyperfine \
+      --warmup 2 \
+      -r 10 \
+      --export-json $output_json_benchmark \
+      --export-markdown $output_markdown_benchmark \
+      -n "without_ml" "$mysql_connect -e \"EXPLAIN ANALYZE $query_without_ml\"" \
+      -n "with_ml" "$mysql_connect -e \"EXPLAIN ANALYZE $query_with_ml\""
 done
