@@ -91,27 +91,21 @@ query_compare_with_baseline=${query/"SELECT "/"SELECT /*+ ML_CARDINALITY_ESTIMAT
 
 if [ ! -s "$output_json_baseline" ]
 then 
-  $mysql_connect -e "EXPLAIN ANALYZE format=json $query_compare_with_baseline" | awk '
-  /^{/ {start = 1}
-  /^EXPLAIN: / {gsub(/^EXPLAIN: /, ""); start = 1}
-  start {print}' > "$output_json_baseline"
+  $mysql_connect -e "EXPLAIN ANALYZE format=json $query_compare_with_baseline" > "$output_json_baseline"
 else
   echo "Comparison results on baseline plan for $name already collected, skipping..."
 fi
 
 if [ ! -s "$output_json_ml" ]
 then 
-  $mysql_connect -e "EXPLAIN ANALYZE format=json $query_with_ml" | awk '
-  /^{/ {start = 1}
-  /^EXPLAIN: / {gsub(/^EXPLAIN: /, ""); start = 1}
-  start {print}' > "$output_json_ml"
+  $mysql_connect -e "EXPLAIN ANALYZE format=json $query_with_ml" > "$output_json_ml"
 else
   echo "Comparison results on ML plan for $name already collected, skipping..."
 fi
 
 hyperfine \
-  --warmup 0 \
-  -r 1 \
+  --warmup 2 \
+  -r 10 \
   --export-json $output_json_benchmark \
   --export-markdown $output_markdown_benchmark \
   -n "without_ml" "$mysql_connect -e \"EXPLAIN ANALYZE $query_without_ml\"" \

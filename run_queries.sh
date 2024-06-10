@@ -2,7 +2,7 @@
 set -e
 
 CURDIR=$(cd `dirname $0`; pwd)
-OUTDIR=$CURDIR/results/job
+OUTDIR=$CURDIR/results/job-light
 
 if [ ! -e $OUTDIR ]; then
   mkdir -p $OUTDIR
@@ -68,7 +68,7 @@ if [ ! -e $output_folder_benchmark ]; then
 mkdir -p $output_folder_benchmark
 fi
 
-for file in `ls datasets/job/queries/*.sql`; do
+for file in `ls workloads/job-light/queries/*.sql`; do
     base_name=`basename $file`
     name=${base_name%.*}
     output_markdown_benchmark=$output_folder_benchmark/$name.md
@@ -83,7 +83,7 @@ for file in `ls datasets/job/queries/*.sql`; do
     original_query=$(<$file)
     query=${original_query/";"/"\G"}
 
-    if [ -s "$output_json_baseline" ] && [ -s "$output_json_benchmark" ]
+    if [ -s "$output_json_baseline" ] && [ -s "$output_json_ml" ] && [ -s "$output_json_benchmark" ]
     then
       echo "Results for $name already collected, skipping..."
       continue
@@ -95,20 +95,14 @@ for file in `ls datasets/job/queries/*.sql`; do
 
     if [ ! -s "$output_json_baseline" ]
     then 
-      $mysql_connect -e "EXPLAIN ANALYZE format=json $query_compare_with_baseline" | awk '
-      /^{/ {start = 1}
-      /^EXPLAIN: / {gsub(/^EXPLAIN: /, ""); start = 1}
-      start {print}' > "$output_json_baseline"
+      $mysql_connect -e "EXPLAIN ANALYZE format=json $query_compare_with_baseline" > "$output_json_baseline"
     else
       echo "Comparison results on baseline plan for $name already collected, skipping..."
     fi
 
     if [ ! -s "$output_json_ml" ]
     then 
-      $mysql_connect -e "EXPLAIN ANALYZE format=json $query_with_ml" | awk '
-      /^{/ {start = 1}
-      /^EXPLAIN: / {gsub(/^EXPLAIN: /, ""); start = 1}
-      start {print}' > "$output_json_ml"
+      $mysql_connect -e "EXPLAIN ANALYZE format=json $query_with_ml" > "$output_json_ml"
     else
       echo "Comparison results on ML plan for $name already collected, skipping..."
     fi
